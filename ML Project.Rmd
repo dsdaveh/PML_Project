@@ -1,0 +1,76 @@
+---
+title: "Machine Learning Project"
+author: "Dave Hurst"
+date: "Saturday, August 23, 2014"
+output: html_document
+---
+
+Read in the data.  There are a lot of columns with NA in the test set, so we'll remove any variables from both the test and training set.  We also remove the first 7 rows since these are metadata that can confuse the random forest method.
+
+```{r}
+data <- read.csv("pml-training.csv", na.strings=c("#DIV/0!","NA"))
+test <- read.csv("pml-testing.csv", na.strings=c("#DIV/0!","NA"))
+n.k <- dim(data)[2]  #160 for data and testing
+
+#check that we're dealing with the same columns in each set (except the last column)
+identical(names(data)[-n.k], names(test)[-n.k]) #TRUE
+
+remove.cols <- logical(n.k-1)  # set up a vector of columns to remove
+for (i in 1:n.k-1) remove.cols[i] = sum(is.na(test[,i])) == nrow(test)
+test <- test[,-1*which(remove.cols)]
+data <- data[,-1*which(remove.cols)]
+
+#the first 7 columns aren't relevant, so we'll save them elsewhere and remove them from the data
+data.info <- data[ ,1:7]
+data <- data[ ,-(1:7)]
+test.info <- test[ ,1:7]
+test <- test[ ,-(1:7)]
+
+```
+Use the caret package to run random forest.  The caret package uses a 5 fold cross validation by default to prevend overfitting.  This takes an extremely long time.  On my system it was just shy of 5 hours.
+
+The RF training was performed on 70% of the training data, holding back the remainder for accuracy tests.
+
+```{r}
+library(caret)
+library(randomForest)
+set.seed(578)                                                # does not correspond to save file :-(
+inTrain <- createDataPartition( y=data$classe, p=0.7, list=FALSE )
+training <- data[inTrain,]
+testing <- data[-inTrain,]  # we'll use testing (as opposed to test) to check accuracy
+
+                                                             # ptime <- proc.time()
+#fit.rf <- train( classe ~ ., data=training, method="rf"
+#                 , prox=TRUE, do.trace=100, importance=TRUE)  # approx 4 hrs on my laptop
+                                                             # rf.ptime <- ptime - proc.time()
+# > rf.ptime
+#      user    system   elapsed 
+# -17046.02   -100.72 -17961.99 
+load("C:/Users/319960/Desktop/Offline-Temp/fit_rf_53var.RData")
+fit.rf
+```
+
+Plot the variable importance
+
+```{r, echo=FALSE}
+varImpPlot(fit.rf$finalModel, main = "Variable Importance", pch = 20, col = "darkblue")
+```
+
+The RF returns very high accuracy (>99%) using mtry=2.
+```{r}
+pred <- predict(fit.rf, testing)
+testing$correct <- pred == testing$classe
+confuse <- table(pred, testing$classe)
+testing.accuracy <- sum(diag(confuse))/sum(confuse)
+confuse
+```
+Testing Accuracy = `r testing.accuracy`
+
+Finally, we fit the data to the test data provided.
+
+```{r}
+pred.final <- predict(fit.rf, test)
+pred.final
+```
+
+
